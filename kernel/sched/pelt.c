@@ -28,6 +28,8 @@
 #include "sched.h"
 #include "pelt.h"
 
+#include <trace/events/sched.h>
+
 /*
  * Approximate:
  *   val * y^n,    where y^32 ~= 0.5 (~1 scheduling period)
@@ -231,7 +233,7 @@ ___update_load_avg(struct sched_avg *sa, unsigned long load, unsigned long runna
 	 */
 	sa->load_avg = div_u64(load * sa->load_sum, divider);
 	sa->runnable_load_avg =	div_u64(runnable * sa->runnable_load_sum, divider);
-	sa->util_avg = sa->util_sum / divider;
+	WRITE_ONCE(sa->util_avg, sa->util_sum / divider);
 }
 
 /*
@@ -265,6 +267,9 @@ int __update_load_avg_blocked_se(u64 now, struct sched_entity *se)
 {
 	if (___update_load_sum(now, &se->avg, 0, 0, 0)) {
 		___update_load_avg(&se->avg, se_weight(se), se_runnable(se));
+
+		trace_sched_load_se(se);
+
 		return 1;
 	}
 
@@ -278,6 +283,9 @@ int __update_load_avg_se(u64 now, struct cfs_rq *cfs_rq, struct sched_entity *se
 
 		___update_load_avg(&se->avg, se_weight(se), se_runnable(se));
 		cfs_se_util_change(&se->avg);
+
+		trace_sched_load_se(se);
+
 		return 1;
 	}
 
@@ -292,6 +300,9 @@ int __update_load_avg_cfs_rq(u64 now, struct cfs_rq *cfs_rq)
 				cfs_rq->curr != NULL)) {
 
 		___update_load_avg(&cfs_rq->avg, 1, 1);
+
+		trace_sched_load_cfs_rq(cfs_rq);
+
 		return 1;
 	}
 
@@ -317,6 +328,9 @@ int update_rt_rq_load_avg(u64 now, struct rq *rq, int running)
 				running)) {
 
 		___update_load_avg(&rq->avg_rt, 1, 1);
+
+		trace_sched_load_rt_rq(rq);
+
 		return 1;
 	}
 
@@ -369,6 +383,7 @@ int update_thermal_load_avg(u64 now, struct rq *rq, u64 capacity)
 			       capacity,
 			       capacity)) {
 		___update_load_avg(&rq->avg_thermal, 1, 1);
+		trace_pelt_thermal_tp(rq);
 		return 1;
 	}
 
@@ -395,8 +410,8 @@ int update_irq_load_avg(struct rq *rq, u64 running)
 	 * clock_task. Instead we directly scale the running time to
 	 * reflect the real amount of computation
 	 */
-	running = cap_scale(running, arch_scale_freq_capacity(cpu_of(rq)));
-	running = cap_scale(running, arch_scale_cpu_capacity(cpu_of(rq)));
+	running = cap_scale(running, arch_scale_freq_capacity(NULL, cpu_of(rq)));
+	running = cap_scale(running, arch_scale_cpu_capacity(NULL, cpu_of(rq)));
 
 	/*
 	 * We know the time that has been used by interrupt since last update

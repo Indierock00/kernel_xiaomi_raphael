@@ -51,6 +51,8 @@ static inline u32 get_pelt_divider(struct sched_avg *avg)
  */
 #define UTIL_AVG_UNCHANGED 0x1
 
+#define cap_scale(v, s) ((v)*(s) >> SCHED_CAPACITY_SHIFT)
+
 static inline void cfs_se_util_change(struct sched_avg *avg)
 {
 	unsigned int enqueued;
@@ -104,8 +106,8 @@ static inline void update_rq_clock_pelt(struct rq *rq, s64 delta)
 	 * Scale the elapsed time to reflect the real amount of
 	 * computation
 	 */
-	delta = cap_scale(delta, arch_scale_cpu_capacity(cpu_of(rq)));
-	delta = cap_scale(delta, arch_scale_freq_capacity(cpu_of(rq)));
+	delta = cap_scale(delta, arch_scale_cpu_capacity(NULL, cpu_of(rq)));
+	delta = cap_scale(delta, arch_scale_freq_capacity(NULL, cpu_of(rq)));
 
 	rq->clock_pelt += delta;
 }
@@ -152,9 +154,9 @@ static inline u64 rq_clock_pelt(struct rq *rq)
 static inline u64 cfs_rq_clock_pelt(struct cfs_rq *cfs_rq)
 {
 	if (unlikely(cfs_rq->throttle_count))
-		return cfs_rq->throttled_clock_task - cfs_rq->throttled_clock_task_time;
+		return cfs_rq->throttled_clock_pelt - cfs_rq->throttled_clock_pelt_time;
 
-	return rq_clock_pelt(rq_of(cfs_rq)) - cfs_rq->throttled_clock_task_time;
+	return rq_clock_pelt(rq_of(cfs_rq)) - cfs_rq->throttled_clock_pelt_time;
 }
 #else
 static inline u64 cfs_rq_clock_pelt(struct cfs_rq *cfs_rq)
